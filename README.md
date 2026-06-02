@@ -152,6 +152,6 @@ This program is free software: you can redistribute it and/or modify it under th
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-Copyright (C) 2026 M.B. Parks, Green Shoe Studio.
+Copyright (C) 2026 M.B. Parks, Green Shoe Garage.
 
 GPL-3.0
