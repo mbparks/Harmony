@@ -22,8 +22,9 @@
 
   Module map (search for "=== module ===" headers):
     EventBus, State, AudioCore, SynthVoice, SynthEngine, SoundBank,
-    ChordEngine, KeyEngine, PerformanceEngine, EffectsChain,
-    BassEngine, LoopEngine, BeatsEngine, Patch, MidiOut, Display, UI, App
+    ChordEngine, KeyEngine, ProgressionEngine, PerformanceEngine,
+    EffectsChain, BassEngine, LoopEngine, BeatsEngine, Patch, MidiOut,
+    Display, UI, App
 
   Extension points are marked with // EXTEND: comments.
 -->
@@ -220,7 +221,7 @@
       0 2px 0 rgba(0,0,0,0.35);
     padding: 16px 18px;
     display: grid;
-    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-rows: auto auto auto auto auto 1fr;
     gap: 10px;
     border: 1px solid var(--panel-edge);
   }
@@ -328,6 +329,103 @@
     .fx-name { font-size: 7px; letter-spacing: 0.12em; min-width: 32px; }
     .fx-value { font-size: 8px; min-width: 16px; }
     .fx-cell { height: 18px; gap: 4px; }
+  }
+
+  /* Progression strip: a row of named one-tap chord progressions for
+     people who don't know which chords to play. When active, the next
+     keyboard press triggers the next chord in the sequence. */
+  .prog-strip {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #1c1814 0%, #110d09 100%);
+    border: 1px solid #0a0807;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.04),
+      inset 0 -1px 2px rgba(0,0,0,0.5);
+  }
+  .prog-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: #b9a884;
+    text-transform: uppercase;
+    align-self: center;
+    min-width: 80px;
+  }
+  .prog-btn {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--btn-edge);
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--btn-top), var(--btn-top-2));
+    box-shadow:
+      0 1px 0 rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      inset 0 -1px 0 rgba(0,0,0,0.3);
+    color: var(--btn-label);
+    cursor: pointer;
+    padding: 5px 4px;
+    text-align: center;
+    user-select: none;
+    transition: background 100ms ease, color 100ms ease, box-shadow 100ms ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    line-height: 1.1;
+  }
+  .prog-btn .pb-name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+  }
+  .prog-btn .pb-hint {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 9px;
+    color: #b9a884;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .prog-btn:hover {
+    background: linear-gradient(180deg, #2a221b, #1a140f);
+  }
+  .prog-btn.active {
+    background:
+      radial-gradient(circle at 50% 0%, rgba(233, 169, 58, 0.25), transparent 60%),
+      linear-gradient(180deg, #2c2218 0%, #1a140f 100%);
+    border-color: var(--btn-active);
+    box-shadow:
+      0 0 10px rgba(233, 169, 58, 0.35),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+    color: var(--btn-active);
+  }
+  .prog-btn.active .pb-hint { color: var(--btn-active); opacity: 0.85; }
+  .prog-step {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--btn-active);
+    align-self: center;
+    min-width: 32px;
+    text-align: right;
+    text-shadow: 0 0 4px rgba(233, 169, 58, 0.4);
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+  .prog-step.visible { opacity: 1; }
+  @media (max-width: 720px) {
+    .prog-strip { gap: 4px; padding: 4px 6px; }
+    .prog-label { font-size: 7px; min-width: 60px; }
+    .prog-btn { padding: 3px 2px; }
+    .prog-btn .pb-name { font-size: 8px; }
+    .prog-btn .pb-hint { font-size: 7px; }
+    .prog-step { font-size: 8px; min-width: 24px; }
   }
 
   /* Loop Console: dedicated transport row. Tape-deck affordances. */
@@ -1437,6 +1535,17 @@
         </div>
       </div>
 
+      <!-- Progression strip: named one-tap chord progressions. When one is
+           active, each key press advances to the next chord in the sequence
+           rather than playing what the key would normally trigger. Tap an
+           active progression to deactivate. Tapping a chord-type button
+           below also deactivates, returning to free play. -->
+      <div class="prog-strip" id="prog-strip">
+        <div class="prog-label">Progression</div>
+        <!-- Buttons rendered by buildProgressionStrip() -->
+        <div class="prog-step" id="prog-step"></div>
+      </div>
+
       <!-- Recorder: single state-aware primary button plus the explicit
            post-recording actions Mike asked for (pause via the primary, start
            over, save WAV, load file). -->
@@ -1565,6 +1674,11 @@
     <div class="row"><kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> = white keys, C through C</div>
     <div class="row"><kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> = black keys</div>
 
+    <h3>Progressions</h3>
+    <div class="row">Tap a button in the <kbd>Progression</kbd> strip and the keyboard becomes a "tap-the-beat" trigger: each key press plays the next chord in the named sequence. The home key is set by the <kbd>Key</kbd> dial.</div>
+    <div class="row dim">Pop (I V vi IV), Slow Dance (I vi IV V), Melancholy (vi IV I V), Hymn (I IV V I), Late Night (ii V I), Mountain (I bVII IV I).</div>
+    <div class="row dim">To go back to free play, tap the active progression again, or tap any chord-type button.</div>
+
     <h3>Keyboard, left hand (chord shaping)</h3>
     <div class="row"><kbd>Z</kbd> Dim (tense) &nbsp; <kbd>X</kbd> Min (sad) &nbsp; <kbd>C</kbd> Maj (happy) &nbsp; <kbd>V</kbd> Sus (floating)</div>
     <div class="row"><kbd>B</kbd> 6 (sweet) &nbsp; <kbd>N</kbd> m7 (bluesy) &nbsp; <kbd>M</kbd> M7 (dreamy) &nbsp; <kbd>,</kbd> 9 (full)</div>
@@ -1637,6 +1751,8 @@ const State = (() => {
     keyRoot: 0, // 0 = C
     keyMinor: false,
     transpose: 0,
+    progressionId: null,           // active progression id (or null)
+    progressionStep: 0,            // current step index within the active progression
     bassOn: false,
     bassMode: 'chords-only',
     bassSoundIdx: 0,
@@ -2197,6 +2313,95 @@ const KeyEngine = (() => {
   }
 
   return { isInKey, quantize, diatonicType, rootName };
+})();
+
+/* ============================================================
+   === module === ProgressionEngine
+   Named chord progressions that drive the sequence of chords
+   when active. Each progression is a list of steps; each step
+   has a semitone degree (offset from the current key root) and
+   a chord quality. When a progression is active, pressKey
+   advances by one step instead of using the key the user pressed
+   as a pitch source. The user picks any key to "tap the beat";
+   the progression decides which chord plays.
+   ============================================================ */
+const ProgressionEngine = (() => {
+  // Steps use semitone offsets from the key root, not scale degrees,
+  // so a progression works in any key (major or minor) by just shifting
+  // the root. Quality strings match the chord-type system (maj/min/sus/dim).
+  const LIST = [
+    { id: 'pop',      name: 'Pop',         hint: 'Hopeful, anthemic',
+      steps: [
+        { degree: 0, quality: 'maj' },   // I
+        { degree: 7, quality: 'maj' },   // V
+        { degree: 9, quality: 'min' },   // vi
+        { degree: 5, quality: 'maj' },   // IV
+      ] },
+    { id: 'sweet',    name: 'Slow Dance',  hint: 'Tender, nostalgic',
+      steps: [
+        { degree: 0, quality: 'maj' },   // I
+        { degree: 9, quality: 'min' },   // vi
+        { degree: 5, quality: 'maj' },   // IV
+        { degree: 7, quality: 'maj' },   // V
+      ] },
+    { id: 'melancholy', name: 'Melancholy', hint: 'Wistful, falling',
+      steps: [
+        { degree: 9, quality: 'min' },   // vi
+        { degree: 5, quality: 'maj' },   // IV
+        { degree: 0, quality: 'maj' },   // I
+        { degree: 7, quality: 'maj' },   // V
+      ] },
+    { id: 'hymn',     name: 'Hymn',        hint: 'Solemn, resolved',
+      steps: [
+        { degree: 0, quality: 'maj' },   // I
+        { degree: 5, quality: 'maj' },   // IV
+        { degree: 7, quality: 'maj' },   // V
+        { degree: 0, quality: 'maj' },   // I
+      ] },
+    { id: 'jazz',     name: 'Late Night',  hint: 'Jazzy, smoky',
+      steps: [
+        { degree: 2, quality: 'min' },   // ii
+        { degree: 7, quality: 'maj' },   // V
+        { degree: 0, quality: 'maj' },   // I
+      ] },
+    { id: 'mountain', name: 'Mountain',    hint: 'Earthy, modal',
+      steps: [
+        { degree: 0,  quality: 'maj' },  // I
+        { degree: 10, quality: 'maj' },  // bVII
+        { degree: 5,  quality: 'maj' },  // IV
+        { degree: 0,  quality: 'maj' },  // I
+      ] },
+  ];
+
+  function list() { return LIST; }
+  function get(id) { return LIST.find(p => p.id === id) || null; }
+
+  // Resolve the current step into a concrete chord input: a target MIDI
+  // root and a forced chord-quality set. Returns null when no progression
+  // is active. The target MIDI is anchored to octave 4 (C4 = 60) so the
+  // sequence sits in a consistent register regardless of which key the
+  // user actually pressed; the user's keypress is only a trigger.
+  function resolveStep(progressionId, step, keyRoot) {
+    const p = get(progressionId);
+    if (!p) return null;
+    const s = p.steps[step % p.steps.length];
+    const targetMidi = 60 + ((keyRoot + s.degree) % 12);
+    return {
+      midi: targetMidi,
+      quality: s.quality,
+      stepIndex: step % p.steps.length,
+      stepCount: p.steps.length,
+      name: p.name,
+    };
+  }
+
+  function nextStep(progressionId, currentStep) {
+    const p = get(progressionId);
+    if (!p) return 0;
+    return (currentStep + 1) % p.steps.length;
+  }
+
+  return { list, get, resolveStep, nextStep };
 })();
 
 /* ============================================================
@@ -3067,6 +3272,7 @@ const Patch = (() => {
         perform:   { idx: s.performIdx, id: s.perform },
         key:       { on: s.keyOn, root: s.keyRoot, minor: s.keyMinor },
         transpose: s.transpose,
+        progression: s.progressionId,
         bass: {
           on:      s.bassOn,
           mode:    s.bassMode,
@@ -3133,6 +3339,13 @@ const Patch = (() => {
     }
     if (Number.isInteger(p.transpose)) {
       updates.transpose = Math.max(-24, Math.min(24, p.transpose));
+    }
+    if (typeof p.progression === 'string' && ProgressionEngine.get(p.progression)) {
+      updates.progressionId = p.progression;
+      updates.progressionStep = 0;
+    } else if (p.progression === null) {
+      updates.progressionId = null;
+      updates.progressionStep = 0;
     }
     if (p.bass && typeof p.bass === 'object') {
       if (typeof p.bass.on === 'boolean') updates.bassOn = p.bass.on;
@@ -4211,7 +4424,8 @@ const UI = (() => {
       btn.addEventListener('pointerdown', e => {
         e.preventDefault();
         AudioCore.init();
-        const types = new Set(State.get().chordTypes);
+        const s = State.get();
+        const types = new Set(s.chordTypes);
         // Shift/Ctrl click = additive (for secret chord combos like Maj+Min, Dim+Sus, etc).
         // Plain click = replace, so users can quickly switch from Maj to Min.
         if (e.shiftKey || e.ctrlKey || e.metaKey) {
@@ -4222,7 +4436,14 @@ const UI = (() => {
           types.add(t);
         }
         if (types.size === 0) types.add(t);
-        State.set({ chordTypes: types, chordType: [...types][0] });
+        // Touching a chord-type button is a clean break out of any active
+        // progression: the user is asserting manual control.
+        const update = { chordTypes: types, chordType: [...types][0] };
+        if (s.progressionId) {
+          update.progressionId = null;
+          update.progressionStep = 0;
+        }
+        State.set(update);
       });
       typeRow.appendChild(btn);
     });
@@ -4236,9 +4457,15 @@ const UI = (() => {
       btn.addEventListener('pointerdown', ev => {
         ev.preventDefault();
         AudioCore.init();
-        const exts = new Set(State.get().extensions);
+        const s = State.get();
+        const exts = new Set(s.extensions);
         if (exts.has(e)) exts.delete(e); else exts.add(e);
-        State.set({ extensions: exts });
+        const update = { extensions: exts };
+        if (s.progressionId) {
+          update.progressionId = null;
+          update.progressionStep = 0;
+        }
+        State.set(update);
       });
       extRow.appendChild(btn);
     });
@@ -4351,8 +4578,27 @@ const UI = (() => {
     let workingMidi = midi + s.transpose;
     let typeOverride = null;
 
-    // Apply key-mode quantization
-    if (s.keyOn) {
+    // If a progression is active, it takes the wheel: the user's specific
+    // key press is just a trigger ("tap the beat"). The progression
+    // resolves to a concrete root + quality based on the current step,
+    // and we advance the step for next time. We intentionally bypass key-
+    // mode quantization and the diatonic default-type logic here because
+    // the progression is the authority on harmony.
+    let progressionActive = false;
+    if (s.progressionId) {
+      const resolved = ProgressionEngine.resolveStep(s.progressionId, s.progressionStep, s.keyRoot);
+      if (resolved) {
+        workingMidi = resolved.midi;
+        typeOverride = resolved.quality;
+        progressionActive = true;
+        State.set({
+          progressionStep: ProgressionEngine.nextStep(s.progressionId, s.progressionStep),
+        });
+      }
+    }
+
+    // Apply key-mode quantization (skipped during a progression)
+    if (s.keyOn && !progressionActive) {
       const q = KeyEngine.quantize(workingMidi, s.keyRoot, s.keyMinor);
       workingMidi = q.midi;
       if (q.type) typeOverride = q.type;
@@ -4365,8 +4611,10 @@ const UI = (() => {
     // Key Mode drives chord types ONLY when the user hasn't actively chosen one.
     // "Default state" = just Maj selected, no extensions. If they've picked
     // Min/Sus/Dim or layered extensions, respect that choice.
+    // Skipped entirely when a progression is active since the progression's
+    // quality is the authority.
     const isDefault = (s.chordTypes.size === 1 && s.chordTypes.has('maj') && s.extensions.size === 0);
-    if (s.keyOn && !typeOverride && isDefault) {
+    if (s.keyOn && !typeOverride && isDefault && !progressionActive) {
       const dia = KeyEngine.diatonicType(workingMidi, s.keyRoot, s.keyMinor);
       if (dia) {
         chordTypes = new Set([dia]);
@@ -4809,6 +5057,59 @@ const UI = (() => {
     });
   }
 
+  // ----- Progression strip -----
+  // A row of named one-tap chord progressions. The progressions themselves
+  // live in ProgressionEngine; this is just the UI: render buttons, show
+  // which one is active and what step it's on, handle clicks.
+  function buildProgressionStrip() {
+    const strip = document.getElementById('prog-strip');
+    const stepEl = document.getElementById('prog-step');
+    const stepLabel = strip.querySelector('.prog-label');
+    const stepIndicator = stepEl;
+
+    // Insert buttons between the label and the step indicator.
+    const progs = ProgressionEngine.list();
+    const btnEls = new Map();
+    progs.forEach(p => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'prog-btn';
+      btn.dataset.prog = p.id;
+      btn.title = `${p.name}: ${p.hint}`;
+      btn.innerHTML = `<div class="pb-name">${p.name}</div><div class="pb-hint">${p.hint}</div>`;
+      btn.addEventListener('click', () => {
+        const cur = State.get().progressionId;
+        if (cur === p.id) {
+          // Tapping the active progression deactivates it.
+          State.set({ progressionId: null, progressionStep: 0 });
+        } else {
+          State.set({ progressionId: p.id, progressionStep: 0 });
+        }
+        AudioCore.init();
+      });
+      strip.insertBefore(btn, stepIndicator);
+      btnEls.set(p.id, btn);
+    });
+
+    // Reflect the active progression and current step in the UI.
+    EventBus.on('state', () => {
+      const s = State.get();
+      btnEls.forEach((btn, id) => {
+        btn.classList.toggle('active', s.progressionId === id);
+      });
+      if (s.progressionId) {
+        const p = ProgressionEngine.get(s.progressionId);
+        if (p) {
+          stepEl.textContent = `${(s.progressionStep % p.steps.length) + 1}/${p.steps.length}`;
+          stepEl.classList.add('visible');
+        }
+      } else {
+        stepEl.textContent = '';
+        stepEl.classList.remove('visible');
+      }
+    });
+  }
+
   function init() {
     buildTopDials();
     buildVoicingDials();
@@ -4816,6 +5117,7 @@ const UI = (() => {
     buildKeyboard();
     bindKeyboard();
     buildFxStrip();
+    buildProgressionStrip();
     buildLoopConsole();
     buildPatchControls();
     // Push initial state to force first render
